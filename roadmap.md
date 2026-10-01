@@ -1,0 +1,3 @@
+- [ ] Build The Haunted Blueprint seasonal catalog page, navigation link, original covers, detail previews and truthful coming-soon states.
+- [ ] Correct displayed bundle math: omit inaccurate regular totals and do not suggest live discounts or checkout.
+- [ ] Verify desktop/mobile page and interactive catalog; report live versus upcoming features.
