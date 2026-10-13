@@ -6,7 +6,6 @@ import { defaultPriceCents } from "./pricing";
 
 export type AccessReason =
   | "admin"
-  | "free"
   | "entitlement"
   | "locked"
   | "unpublished"
@@ -79,8 +78,9 @@ export async function resolveReportAccess(
 
   if (await isAdminUser(userId)) return { allowed: true, reason: "admin", ...base };
   if (!product.is_published) return { allowed: false, reason: "unpublished", ...base };
-  if (product.is_free || product.price_cents <= 0)
-    return { allowed: true, reason: "free", ...base };
+  // Reports are never free for customers. is_free / $0 rows are treated as
+  // "price pending" — still locked — until an admin confirms a real price.
+  // An existing active entitlement (purchase or admin grant) still unlocks.
 
   const { data: ent, error: entErr } = await supabaseAdmin
     .from("report_entitlements")

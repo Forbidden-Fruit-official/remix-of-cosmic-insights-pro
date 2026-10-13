@@ -374,27 +374,28 @@ export function ReportsPanel({ chart }: { chart: ChartCalculation }) {
 
   const generatedList = REPORTS.filter((r) => reports[r.id]).map((r) => reports[r.id]);
 
+  // Customers never get reports free; a report with no confirmed price is
+  // "price coming soon" until an admin sets one. Server enforces the same.
+  function hasPrice(p: { is_free: boolean; price_cents: number }) {
+    return !p.is_free && p.price_cents > 0;
+  }
+
   function priceLabel(id: string): string | null {
     if (isAdmin) return "Included";
     const p = priceById.get(id);
     if (!p) return null;
-    if (p.is_free) return "Free";
+    if (!hasPrice(p)) return "Price coming soon";
     return formatPrice(p.price_cents);
   }
 
   /** True when the user may generate this report right now. */
   function isUnlocked(id: string): boolean {
     if (isAdmin) return true;
-    const p = priceById.get(id);
-    if (!p) return true; // catalog not synced yet — server still enforces access
-    if (p.is_free || p.price_cents <= 0) return true;
     return unlockedIds.has(id);
   }
 
   function statusLabel(id: string): string {
     if (isAdmin) return "🆓 Included";
-    const p = priceById.get(id);
-    if (p && (p.is_free || p.price_cents <= 0)) return "🆓 Free";
     return isUnlocked(id) ? "🔓 Unlocked" : "🔒 Locked";
   }
 
