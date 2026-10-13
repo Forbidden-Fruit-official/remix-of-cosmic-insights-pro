@@ -31,10 +31,13 @@ export const createReportCheckout = createServerFn({ method: "POST" })
     if (error) throw new Error(error.message);
     if (!row) throw new Error("Unknown report.");
     if (!row.is_published) throw new Error("This report is not available.");
-    if (row.is_free || row.price_cents <= 0) throw new Error("This report is free.");
+    if (row.is_free || row.price_cents <= 0)
+      throw new Error("PRICE_PENDING: This report's price hasn't been set yet. Please check back soon.");
 
     const stripe = getStripe();
     const priceId = await ensureStripePrice(stripe, row);
+    const { promoCheckoutParams } = await import("./promo.server");
+    const promo = await promoCheckoutParams(stripe);
 
     const origin =
       (context.claims as { origin?: string })?.origin ??
@@ -49,6 +52,7 @@ export const createReportCheckout = createServerFn({ method: "POST" })
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
+      ...promo,
       customer_email: email,
       client_reference_id: context.userId,
       metadata: {
