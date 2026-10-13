@@ -1,5 +1,4 @@
-import { generateText } from "ai";
-import { createLovableAiGatewayProvider } from "@/lib/ai-gateway.server";
+import { generateNarrative } from "@/lib/llm-router.server";
 import { REPORTS } from "./reports-catalog";
 
 // Minimal chart shape needed for report generation (subset of ChartCalculation).
@@ -101,13 +100,10 @@ export async function generateReportMarkdown(input: {
   reportId: string;
   chart: ReportChartInput;
 }): Promise<GeneratedReportPayload> {
-  const key = process.env.LOVABLE_API_KEY;
-  if (!key) throw new Error("Missing LOVABLE_API_KEY");
 
   const def = REPORTS.find((r) => r.id === input.reportId);
   if (!def) throw new Error(`Unknown report: ${input.reportId}`);
 
-  const gateway = createLovableAiGatewayProvider(key);
   const chartBlock = chartToPrompt(input.chart);
 
   const system = `You are a master astrologer writing for the Cosmic Blueprint platform.
@@ -141,8 +137,6 @@ UNKNOWN BIRTH TIME PROTOCOL (STRICT):
 REPORT FRAMING:
 ${def.systemFraming}`;
 
-  const model = gateway("google/gemini-3-flash-preview");
-
   const reportDef = def;
   function buildPrompt(sections: string[], opts: { partOf?: [number, number]; previous?: string }) {
     const sectionsList = sections.map((s, i) => `${i + 1}. ${s}`).join("\n");
@@ -172,19 +166,17 @@ Begin now. Do not restate the chart data; weave it into interpretation.`;
   // the model never truncates mid-report.
   if (def.targetWords >= 4500 && def.sections.length > 20) {
     const mid = Math.ceil(def.sections.length / 2);
-    const first = await generateText({
-      model,
+    const first = await generateNarrative({
       system,
       prompt: buildPrompt(def.sections.slice(0, mid), { partOf: [1, 2] }),
     });
-    const second = await generateText({
-      model,
+    const second = await generateNarrative({
       system,
       prompt: buildPrompt(def.sections.slice(mid), { partOf: [2, 2], previous: first.text }),
     });
     text = `${first.text.trim()}\n\n${second.text.trim()}`;
   } else {
-    const result = await generateText({ model, system, prompt: buildPrompt(def.sections, {}) });
+    const result = await generateNarrative({ system, prompt: buildPrompt(def.sections, {}) });
     text = result.text;
   }
 
