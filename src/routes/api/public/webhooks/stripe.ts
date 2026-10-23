@@ -45,8 +45,9 @@ export const Route = createFileRoute("/api/public/webhooks/stripe")({
             case "checkout.session.completed":
             case "checkout.session.async_payment_succeeded": {
               const session = event.data.object;
+              const { isSessionFulfillable } = await import("@/lib/reports/promo.server");
               if (
-                session.payment_status === "paid" ||
+                isSessionFulfillable(session.payment_status) ||
                 event.type === "checkout.session.async_payment_succeeded"
               ) {
                 await fulfillCheckoutSession(session);

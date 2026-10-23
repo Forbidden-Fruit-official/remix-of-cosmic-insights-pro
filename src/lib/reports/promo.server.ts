@@ -14,19 +14,14 @@ export async function findActiveSpookyPromo(stripe: Stripe) {
 }
 
 /**
- * Checkout params: if the active SPOOKYSAVINGS code exists, pre-apply it
- * (Stripe shows the discount line on the checkout page). Otherwise just offer
- * the promo-code field. Stripe forbids sending both at once.
+ * Checkout params: always show Stripe's promo-code field so customers can
+ * enter any active code (SPOOKYSAVINGS, MONICA2REPORTS, ...). Stripe validates
+ * the code, its redemption limit and product restrictions server-side.
+ * Pre-applying a discount would hide this field (Stripe forbids both).
  */
 export async function promoCheckoutParams(
-  stripe: Stripe,
-): Promise<{ discounts: { promotion_code: string }[] } | { allow_promotion_codes: true }> {
-  try {
-    const promo = await findActiveSpookyPromo(stripe);
-    if (promo) return { discounts: [{ promotion_code: promo.id }] };
-  } catch (e) {
-    console.warn("[promo] lookup failed; offering code field only:", (e as Error).message);
-  }
+  _stripe?: Stripe,
+): Promise<{ allow_promotion_codes: true }> {
   return { allow_promotion_codes: true };
 }
 
@@ -45,8 +40,13 @@ export async function ensureSpookyPromo(stripe: Stripe) {
   const promo =
     existing ??
     (await stripe.promotionCodes.create(
-      { coupon: coupon.id, code: SPOOKY_CODE } as Stripe.PromotionCodeCreateParams,
+      { coupon: coupon.id, code: SPOOKY_CODE } as unknown as Stripe.PromotionCodeCreateParams,
       { idempotencyKey: `promo-${SPOOKY_CODE}` },
     ));
   return { couponId: coupon.id, promotionCodeId: promo.id, code: SPOOKY_CODE, percentOff: coupon.percent_off };
+}
+
+/** A completed session should unlock reports when paid, or fully discounted (100% off code). */
+export function isSessionFulfillable(paymentStatus: string | null | undefined): boolean {
+  return paymentStatus === "paid" || paymentStatus === "no_payment_required";
 }
