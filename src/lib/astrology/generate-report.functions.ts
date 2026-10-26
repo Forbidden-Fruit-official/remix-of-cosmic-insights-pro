@@ -58,7 +58,9 @@ export const generateAstroReport = createServerFn({ method: "POST" })
 
     // Entitlement gate — the single server-side source of truth for access.
     const { assertReportAccess } = await import("@/lib/reports/access.server");
+    const accessStarted = performance.now();
     await assertReportAccess(context.userId, data.reportId);
+    console.info(`[report] access checked in ${Math.round(performance.now() - accessStarted)}ms`);
 
     // Adult (18+) reports require a persisted server-side consent acknowledgment
     // stored on the user's profile. Client-only confirms are bypassable.

@@ -105,6 +105,8 @@ export async function generateReportMarkdown(input: {
   if (!def) throw new Error(`Unknown report: ${input.reportId}`);
 
   const chartBlock = chartToPrompt(input.chart);
+  const started = performance.now();
+  const signal = AbortSignal.timeout(480_000);
 
   const system = `You are a master astrologer writing for the Cosmic Blueprint platform.
 
@@ -168,18 +170,21 @@ Begin now. Do not restate the chart data; weave it into interpretation.`;
     const mid = Math.ceil(def.sections.length / 2);
     const first = await generateNarrative({
       system,
+      signal,
       prompt: buildPrompt(def.sections.slice(0, mid), { partOf: [1, 2] }),
     });
     const second = await generateNarrative({
       system,
+      signal,
       prompt: buildPrompt(def.sections.slice(mid), { partOf: [2, 2], previous: first.text }),
     });
     text = `${first.text.trim()}\n\n${second.text.trim()}`;
   } else {
-    const result = await generateNarrative({ system, prompt: buildPrompt(def.sections, {}) });
+    const result = await generateNarrative({ system, signal, prompt: buildPrompt(def.sections, {}) });
     text = result.text;
   }
 
+  console.info(`[report] ${def.id} narrative completed in ${Math.round(performance.now() - started)}ms`);
   return {
     reportId: def.id,
     title: def.title,

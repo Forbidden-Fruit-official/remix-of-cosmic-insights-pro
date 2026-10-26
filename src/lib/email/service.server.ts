@@ -116,6 +116,7 @@ interface SendArgs {
   subject: string;
   html: string;
   metadata?: Record<string, unknown>;
+  idempotencyKey?: string;
 }
 
 async function sendResendEmail(args: SendArgs): Promise<EmailResult> {
@@ -139,7 +140,7 @@ async function sendResendEmail(args: SendArgs): Promise<EmailResult> {
       to: [args.to],
       subject: args.subject,
       html: args.html,
-    });
+    }, args.idempotencyKey ? { idempotencyKey: args.idempotencyKey } : undefined);
     if (error) throw new Error(error.message ?? "Resend error");
     await updateLog(logId, { status: "sent", attempts: 1, resend_id: data?.id ?? null });
     return { ok: true, id: data?.id, logId };
@@ -239,6 +240,7 @@ export function sendPurchaseReceiptEmail(args: {
   });
   return sendResendEmail({
     templateName: "purchase_receipt",
+    idempotencyKey: `purchase-receipt/${args.orderId}`,
     to: args.to,
     toName: args.name,
     subject: `Receipt: ${args.reportTitle}`,

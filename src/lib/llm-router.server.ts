@@ -12,6 +12,7 @@ const FALLBACK_MODEL = "google/gemini-3-flash-preview";
 export interface NarrativeRequest {
   system: string;
   prompt: string;
+  signal?: AbortSignal;
 }
 
 export type ProviderName = "openai" | "lovable-gateway";
@@ -52,12 +53,16 @@ export async function runWithFallback(
 ): Promise<NarrativeResult> {
   const attempts: NarrativeResult["attempts"] = [];
   for (const p of providers) {
+    const started = performance.now();
+    req.signal?.throwIfAborted();
     try {
       const text = await p.run(req);
       if (!text.trim()) throw new Error("empty_output");
+      console.info(`[llm] ${p.name} completed in ${Math.round(performance.now() - started)}ms`);
       attempts.push({ provider: p.name, ok: true });
       return { text, provider: p.name, attempts };
     } catch (err) {
+      req.signal?.throwIfAborted();
       const cat = errorCategory(err);
       attempts.push({ provider: p.name, ok: false, error: cat });
       console.warn(`[llm] ${p.name} failed (${cat}); trying next provider`);
@@ -87,7 +92,7 @@ export async function generateNarrative(req: NarrativeRequest): Promise<Narrativ
             system: r.system,
             prompt: r.prompt,
             maxRetries: 1, // one SDK retry for 429/5xx, then fall back
-            abortSignal: AbortSignal.timeout(OPENAI_TIMEOUT_MS),
+            abortSignal: AbortSignal.any([AbortSignal.timeout(OPENAI_TIMEOUT_MS), ...(r.signal ? [r.signal] : [])]),
           })
         ).text,
     });
@@ -98,7 +103,8 @@ export async function generateNarrative(req: NarrativeRequest): Promise<Narrativ
     providers.push({
       name: "lovable-gateway",
       run: async (r) =>
-        (await generateText({ model: gateway(FALLBACK_MODEL), system: r.system, prompt: r.prompt })).text,
+        (await generateText({ model: gateway(FALLBACK_MODEL), system: r.system, prompt: r.prompt, maxRetries: 1,
+          abortSignal: AbortSignal.any([AbortSignal.timeout(120_000), ...(r.signal ? [r.signal] : [])]) })).text,
     });
   }
   return runWithFallback(req, providers);

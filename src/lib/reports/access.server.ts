@@ -46,7 +46,7 @@ export async function resolveReportAccess(
   userId: string,
   reportId: string,
 ): Promise<ReportAccess> {
-  const product = await loadProduct(reportId);
+  const [product, admin] = await Promise.all([loadProduct(reportId), isAdminUser(userId)]);
   if (!product) return { allowed: false, reason: "unknown_report", reportId };
 
   const base = {
@@ -55,7 +55,7 @@ export async function resolveReportAccess(
     priceCents: product.price_cents,
   };
 
-  if (await isAdminUser(userId)) return { allowed: true, reason: "admin", ...base };
+  if (admin) return { allowed: true, reason: "admin", ...base };
   if (!product.is_published) return { allowed: false, reason: "unpublished", ...base };
   // Reports are never free for customers. is_free / $0 rows are treated as
   // "price pending" — still locked — until an admin confirms a real price.
