@@ -1,3 +1,6 @@
 - [ ] Build The Haunted Blueprint seasonal catalog page, navigation link, original covers, detail previews and truthful coming-soon states.
 - [ ] Correct displayed bundle math: omit inaccurate regular totals and do not suggest live discounts or checkout.
 - [ ] Verify desktop/mobile page and interactive catalog; report live versus upcoming features.
+- [ ] Audit and repair checkout reliability without changing live Stripe objects or prices.
+- [ ] Profile and improve report-generation latency without reducing depth or chart accuracy.
+- [ ] Run relevant tests, lint and preview verification; report live-test limitations and deployment status.

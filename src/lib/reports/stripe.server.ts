@@ -1,5 +1,4 @@
 import Stripe from "stripe";
-import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 export function stripeSecret(): string {
   // The project secret was originally saved under a misspelled name; support both.
@@ -21,6 +20,8 @@ export function getStripe(): Stripe {
   return new Stripe(stripeSecret(), {
     apiVersion: "2025-08-27.basil" as Stripe.LatestApiVersion,
     httpClient: Stripe.createFetchHttpClient(),
+    timeout: 20_000,
+    maxNetworkRetries: 1,
   });
 }
 
@@ -36,58 +37,22 @@ export interface CatalogRow {
   stripe_product_id: string | null;
 }
 
-/**
- * Resolves (creating if needed) the Stripe Price for a report. The amount is
- * always taken from the database — never from the client.
- */
-export async function ensureStripePrice(
-  stripe: Stripe,
-  row: CatalogRow,
-): Promise<string> {
-  if (row.stripe_price_id) {
-    try {
-      const existing = await stripe.prices.retrieve(row.stripe_price_id);
-      if (
-        existing.active &&
-        existing.unit_amount === row.price_cents &&
-        existing.currency === row.currency
-      ) {
-        return existing.id;
-      }
-    } catch {
-      // fall through and create a fresh price
-    }
+/** Read-only validation: checkout must never create or replace catalog prices. */
+export async function ensureStripePrice(stripe: Stripe, row: CatalogRow): Promise<string> {
+  if (!row.stripe_price_id) {
+    throw new Error("This report is not ready for checkout yet. Please contact us before purchasing.");
   }
-
-  let productId = row.stripe_product_id ?? null;
-  if (productId) {
-    try {
-      const p = await stripe.products.retrieve(productId);
-      if (!p.active) productId = null;
-    } catch {
-      productId = null;
-    }
+  let price: Stripe.Price;
+  try {
+    price = await stripe.prices.retrieve(row.stripe_price_id);
+  } catch {
+    throw new Error("We couldn't verify this report's price. Please try again shortly.");
   }
-  if (!productId) {
-    const product = await stripe.products.create({
-      name: row.title,
-      description: row.tagline?.slice(0, 300) || undefined,
-      metadata: { report_id: row.id },
-    });
-    productId = product.id;
+  const productId = typeof price.product === "string" ? price.product : price.product.id;
+  if (!price.active || price.type !== "one_time" || price.unit_amount !== row.price_cents ||
+      price.currency !== row.currency.toLowerCase() ||
+      (row.stripe_product_id && row.stripe_product_id !== productId)) {
+    throw new Error("This report's checkout price needs review. No payment has been started.");
   }
-
-  const price = await stripe.prices.create({
-    product: productId,
-    currency: row.currency,
-    unit_amount: row.price_cents,
-    metadata: { report_id: row.id },
-  });
-
-  await supabaseAdmin
-    .from("report_products")
-    .update({ stripe_price_id: price.id, stripe_product_id: productId })
-    .eq("id", row.id);
-
   return price.id;
 }
