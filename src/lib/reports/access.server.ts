@@ -2,7 +2,6 @@
 // Server-only: never import from client code.
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { REPORTS } from "@/lib/astrology/reports-catalog";
-import { defaultPriceCents } from "./pricing";
 
 export type AccessReason =
   | "admin"
@@ -37,30 +36,10 @@ async function loadProduct(reportId: string) {
   if (error) throw new Error(error.message);
   if (data) return data;
 
-  // Self-heal: a report defined in code but not yet in the catalog table gets
-  // seeded with its default price so pricing is never silently zero.
+  // Code-only entries remain available to admins, but never seed invented prices.
   const def = REPORTS.find((r) => r.id === reportId);
-  if (!def) return null;
-  const row = {
-    id: def.id,
-    title: def.title,
-    tagline: def.tagline,
-    category: def.category,
-    icon: def.icon,
-    adult: !!def.adult,
-    price_cents: defaultPriceCents(def),
-    is_free: false,
-    is_published: true,
-    slug: def.id,
-  };
-  await supabaseAdmin.from("report_products").upsert(row, { onConflict: "id" });
-  return {
-    id: row.id,
-    title: row.title,
-    price_cents: row.price_cents,
-    is_free: row.is_free,
-    is_published: row.is_published,
-  };
+  return def ? { id: def.id, title: def.title, price_cents: 0, is_free: false, is_published: true } : null;
+
 }
 
 export async function resolveReportAccess(

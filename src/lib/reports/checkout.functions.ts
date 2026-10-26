@@ -1,12 +1,14 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
+import { getRequest } from "@tanstack/react-start/server";
+import { checkoutIdempotencyKey, checkoutOrigin } from "./checkout-policy";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 
 /** Creates a Stripe Checkout Session for one report. Price is resolved server-side. */
 export const createReportCheckout = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
   .inputValidator((input: unknown) =>
-    z.object({ reportId: z.string().min(1).max(64) }).parse(input),
+    z.object({ reportId: z.string().min(1).max(64), requestId: z.uuid() }).parse(input),
   )
   .handler(async ({ data, context }) => {
     if ((context.claims as { is_anonymous?: boolean })?.is_anonymous) {
@@ -39,17 +41,16 @@ export const createReportCheckout = createServerFn({ method: "POST" })
     const { promoCheckoutParams } = await import("./promo.server");
     const promo = await promoCheckoutParams(stripe);
 
-    const origin =
-      (context.claims as { origin?: string })?.origin ??
-      process.env.SITE_URL ??
-      "https://yourcosmicblueprint.lovable.app";
+    const origin = checkoutOrigin(getRequest().url, process.env.SITE_URL);
 
     const email =
       typeof (context.claims as { email?: unknown }).email === "string"
         ? ((context.claims as { email?: string }).email as string)
         : undefined;
 
-    const session = await stripe.checkout.sessions.create({
+    let session;
+    try {
+      session = await stripe.checkout.sessions.create({
       mode: "payment",
       line_items: [{ price: priceId, quantity: 1 }],
       ...promo,
@@ -65,9 +66,13 @@ export const createReportCheckout = createServerFn({ method: "POST" })
       },
       success_url: `${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}&report=${encodeURIComponent(row.id)}`,
       cancel_url: `${origin}/checkout/cancel?report=${encodeURIComponent(row.id)}`,
-    });
+    }, { idempotencyKey: checkoutIdempotencyKey(context.userId, "report", row.id, data.requestId) });
+    } catch {
+      throw new Error("We couldn’t open secure checkout. Please try again shortly. No report access has been changed.");
+    }
+    if (!session.url) throw new Error("Checkout is no longer available. Please try again.");
 
-    await supabaseAdmin.from("report_purchases").insert({
+    const { error: purchaseError } = await supabaseAdmin.from("report_purchases").upsert({
       user_id: context.userId,
       report_id: row.id,
       stripe_session_id: session.id,
@@ -75,7 +80,8 @@ export const createReportCheckout = createServerFn({ method: "POST" })
       currency: row.currency,
       status: "pending",
       customer_email: email ?? null,
-    });
+    }, { onConflict: "stripe_session_id", ignoreDuplicates: true });
+    if (purchaseError) throw new Error("We couldn’t save your checkout. Please retry; your checkout will be reused.");
 
     return { alreadyOwned: false as const, url: session.url };
   });
@@ -128,12 +134,13 @@ export const getMyReports = createServerFn({ method: "GET" })
 
     const { data: ents } = await supabaseAdmin
       .from("report_entitlements")
-      .select("report_id, source, granted_at, status")
+      .select("report_id, source, granted_at, status, expires_at")
       .eq("user_id", context.userId)
       .eq("status", "active")
       .order("granted_at", { ascending: false });
 
-    const ids = (ents ?? []).map((e) => e.report_id);
+    const activeEnts = (ents ?? []).filter((e) => !e.expires_at || new Date(e.expires_at).getTime() > Date.now());
+    const ids = activeEnts.map((e) => e.report_id);
     const { data: products } = ids.length
       ? await supabaseAdmin
           .from("report_products")
@@ -152,7 +159,7 @@ export const getMyReports = createServerFn({ method: "GET" })
 
     return {
       isAdmin: admin,
-      items: (ents ?? []).map((e) => ({
+      items: activeEnts.map((e) => ({
         reportId: e.report_id,
         source: e.source,
         grantedAt: e.granted_at,
