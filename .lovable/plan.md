@@ -3,10 +3,11 @@
 ## Current status: blocked on database access
 - The database read tool returned "Database is possibly not accessible at the moment" (checked 10:37 UTC today).
 - Direct database access from the shell also failed: the database login was not found.
+- I retried at 10:43 UTC and got the same error.
 - No code or data was changed.
 
 ## What the audit can and cannot show
-The app does **not** save generated report text or a list of reports someone generated. Reports are written on demand and downloaded as PDFs. So "reports Monica generated" can only be rebuilt from these records:
+I confirmed in the code that generating a report saves no record of it: no title, date or price. Reports are written on demand and downloaded as PDFs. There is also no price history, so a "price at the time it was generated" can't be recovered; only today's catalog price is available. "Reports Monica generated" can only be rebuilt from these records (purchases, unlocks, emailed reports, admin actions):
 
 | Table | Fields that matter |
 |---|---|
