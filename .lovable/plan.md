@@ -1,15 +1,32 @@
-# The Haunted Blueprint™ collection
+# Audit: Monica Meleski's reports (read-only)
 
-## Experience
-- Add a dedicated Halloween Collection page linked from the existing report experience, with a small home feature link. Keep existing navigation and reports intact.
-- Show 14 distinct themed report cards, four browse groups, beginner guidance, and accessible detail previews with inclusions, audience, birth-data requirements, sample interpretations, and truthful availability states.
-- Create original themed cover artwork, sized for cards, and preserve the app’s midnight-and-gold visual identity with subtle seasonal violet accents.
+## Current status: blocked on database access
+- The database read tool returned "Database is possibly not accessible at the moment" (checked 10:37 UTC today).
+- Direct database access from the shell also failed: the database login was not found.
+- No code or data was changed.
 
-## Availability and pricing
-- Treat the 14 products as **catalog previews / coming soon**, not purchasable or generatable, until dedicated generation templates, synastry support, catalog prices and entitlements are implemented. Do not route them through a different report’s purchase or generator.
-- Display requested individual target prices as proposed prices, not live checkout prices. Show bundle targets as proposed / coming soon; do not claim a live discount. The supplied regular totals for Little Monster ($14.97), Haunted Lovers ($25.97), and Ultimate ($103.87) do not equal the sum of supplied individual prices ($12.97, $26.97, and $108.86 respectively); avoid displaying inaccurate struck-through totals, and explicitly flag the discrepancy for correction.
-- State that synastry requires both partners’ birth details and cannot infer rising signs or houses without reliable birth times. Keep all existing authorization and calculation pathways unchanged.
+## What the audit can and cannot show
+The app does **not** save generated report text or a list of reports someone generated. Reports are written on demand and downloaded as PDFs. So "reports Monica generated" can only be rebuilt from these records:
 
-## Technical details
-- Add a separate typed seasonal presentation catalog rather than inserting unfinished products into the live report catalog. Add a new route with leaf metadata and a link beside the existing report area/home. Reuse existing Button styling and semantic theme tokens; no payment, auth, schema, or chart changes.
-- Verify desktop/mobile display, browse/detail interactions, and the latest preview diagnostics. Record any remaining production blockers clearly.
+| Table | Fields that matter |
+|---|---|
+| auth.users | id, email (to find Monica's account) |
+| report_purchases | report_id, status, amount_cents, currency, created_at, stripe_session_id, metadata |
+| report_entitlements | report_id, status, source (purchase / admin grant), granted_at, granted_by, purchase_id, note |
+| email_send_log | recipient_email, template_name, status, created_at, pdf_url, metadata (report emails sent) |
+| admin_audit_log | action, target_email, target_report_id, created_at, metadata |
+| report_products | id, title, price_cents, currency, is_free, is_published, stripe_price_id, stripe_product_id |
+| user_roles | role (to check whether Monica is an admin, so generations would leave no purchase record) |
+
+## Steps once the database responds
+1. Find Monica's account by email (try `%meleski%` in case the address differs).
+2. Pull her purchases, unlocked reports, report emails and admin log entries; merge them into one list by report with date, status and source.
+3. Match each report to `report_products` for its standard price and Stripe price.
+4. Add up standard prices only for reports with a real, non-zero price and a Stripe price. Flag every report with no price, a $0 price, a "free" flag, or no matching product, and leave it out of the total.
+5. Report any reports she generated that left no record (for example if she is an admin), as unknowable.
+
+## Pricing caveat known now
+Earlier checks found that the catalog rows may hold $0 prices and no Stripe price links. The built-in price tiers in the code ($14–$99) were never confirmed as real prices, so they won't be used. If the rows are still $0, the total will show as blocked rather than as an estimate.
+
+## What I need from you
+Retry once the backend is reachable. If it stays unavailable, export `report_purchases`, `report_entitlements`, `email_send_log` and `report_products` as CSV and attach them here, and I'll do the audit from those files.
