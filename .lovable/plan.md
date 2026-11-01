@@ -1,33 +1,36 @@
-# Audit: Monica Meleski's reports (read-only)
+# Live checkout incident: diagnosis and repair plan (read-only so far)
 
-## Current status: blocked on database access
-- The database read tool returned "Database is possibly not accessible at the moment" (checked 10:37 UTC today).
-- Direct database access from the shell also failed: the database login was not found.
-- I retried at 10:43 UTC and got the same error.
-- No code or data was changed.
+## Findings (checked 1 Nov, 11:2x UTC; nothing changed)
+1. **The live site is not this project.** mycosmicblueprint.online redirects (301) to yourcosmicblueprint.lovable.app. This project has never been published; its own address is cosmic-celestial-insight.lovable.app. The live site runs a different project's code.
+2. **The error text isn't in this project.** "not configured for a secured checkout" appears nowhere in this code. This project's checkout errors are different ("This report is not ready for checkout yet", "PRICE_PENDING…"). The live site's code also shows older wording, such as "Report AI is not configured. Set GEMINI_API_KEY…", which this project doesn't have.
+3. **I can't open the live project.** No project in your workspace that I can access matches yourcosmicblueprint, so I couldn't read its code, its catalog or its Stripe links.
+4. **This project couldn't take payments yet either, even if published:**
+   - `STRIPE_SECRET_KEY` is set but holds a placeholder, not a real key (names present: SITE_URL, STRIPE_SECRET_KEY, STRIPE_WEBHOOK).
+   - Catalog rows are reported as $0 / free with no Stripe price links. `createReportCheckout` (src/lib/reports/checkout.functions.ts, about line 35) rejects them with PRICE_PENDING, and `ensureStripePrice` (src/lib/reports/stripe.server.ts, line 42) rejects any row without a Stripe price.
+   - The database is unreachable from here, so I couldn't list each report's setup.
 
-## What the audit can and cannot show
-I confirmed in the code that generating a report saves no record of it: no title, date or price. Reports are written on demand and downloaded as PDFs. There is also no price history, so a "price at the time it was generated" can't be recovered; only today's catalog price is available. "Reports Monica generated" can only be rebuilt from these records (purchases, unlocks, emailed reports, admin actions):
+**Likely root cause:** the live project's catalog has no Stripe price set for any report, which is the same state as the 193-row spreadsheet (all $0, no Stripe IDs). I can't confirm this until I can read that project or the shared database.
 
-| Table | Fields that matter |
-|---|---|
-| auth.users | id, email (to find Monica's account) |
-| report_purchases | report_id, status, amount_cents, currency, created_at, stripe_session_id, metadata |
-| report_entitlements | report_id, status, source (purchase / admin grant), granted_at, granted_by, purchase_id, note |
-| email_send_log | recipient_email, template_name, status, created_at, pdf_url, metadata (report emails sent) |
-| admin_audit_log | action, target_email, target_report_id, created_at, metadata |
-| report_products | id, title, price_cents, currency, is_free, is_published, stripe_price_id, stripe_product_id |
-| user_roles | role (to check whether Monica is an admin, so generations would leave no purchase record) |
+## Safest repair plan (each step needs your go-ahead)
+1. **Identify the live project:** tell me its name, or share it with this workspace. I'll check it out read-only and find the exact line that shows the error.
+2. **Decide which project should be live.** Option A: fix the existing live project. Option B: publish this project and move the domain to it. Option B also needs a real Stripe key and confirmed prices.
+3. **Set the prices:** you supply real prices and existing Stripe price IDs per report. I'll link them to the catalog without creating or changing anything in Stripe. Reports with no confirmed price stay "Price coming soon".
+4. Admin free access and the purchase-unlock rules stay as they are.
 
-## Steps once the database responds
-1. Find Monica's account by email (try `%meleski%` in case the address differs).
-2. Pull her purchases, unlocked reports, report emails and admin log entries; merge them into one list by report with date, status and source.
-3. Match each report to `report_products` for its standard price and Stripe price.
-4. Add up standard prices only for reports with a real, non-zero price and a Stripe price. Flag every report with no price, a $0 price, a "free" flag, or no matching product, and leave it out of the total.
-5. Report any reports she generated that left no record (for example if she is an admin), as unknowable.
+## Verification plan
+- A script, run as a non-admin test account, tries to start checkout for every published report. It records which ones open a Stripe page, then stops without paying.
+- Do one real low-value or 100%-off test purchase. Confirm the report unlocks only after Stripe confirms payment, and that it appears in My Reports.
+- Confirm an admin still opens every report free.
 
-## Pricing caveat known now
-Earlier checks found that the catalog rows may hold $0 prices and no Stripe price links. The built-in price tiers in the code ($14–$99) were never confirmed as real prices, so they won't be used. If the rows are still $0, the total will show as blocked rather than as an estimate.
+## Automated pre-publish check (recommended)
+- A test that fails if any published, non-free report has a $0 price or no Stripe price ID.
+- An admin "checkout readiness" check that asks Stripe, read-only, whether each linked price is active, one-time and the same amount as the catalog.
+- A warning if the live domain points to a different project than the one being published.
+
+## Still open: Monica audit
+Blocked: the database can't be reached, and generated reports aren't saved. Only purchases, unlocks, emails and admin actions can be counted, at today's catalog prices.
 
 ## What I need from you
-Retry once the backend is reachable. If it stays unavailable, export `report_purchases`, `report_entitlements`, `email_send_log` and `report_products` as CSV and attach them here, and I'll do the audit from those files.
+- The name of the project behind yourcosmicblueprint.lovable.app, or access to it.
+- Which project should be live.
+- A real Stripe key and confirmed prices, if this project goes live.
